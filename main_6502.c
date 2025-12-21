@@ -21,6 +21,22 @@ typedef struct
 
 }MEM;
 
+void mem_write(MEM *mem, word address, byte value){
+    if (address >= MEM_MAXIMA){
+        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
+        exit(1);
+    }
+    mem->data[address] = value;
+}
+
+byte mem_read(MEM *mem, word address){
+    if (address >= MEM_MAXIMA){
+        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
+        exit(1);
+    }
+    return mem->data[address];
+}
+
 typedef struct
 {
         /* Registradores */
@@ -75,14 +91,31 @@ void cpu_reset(CPU *cpu, MEM *mem){
 }
 
 
+// Busca o próximo opcode a ser executado
+byte cpu_fetch(CPU *cpu, MEM *mem){
+    byte opcode = mem_read(mem, cpu->PC); // Lê o byte na posição do PC
+    cpu->PC++; // Incrementa o PC para apontar para a próxima instrução
+    return opcode;
+}
+
+
+
 int main(){
     CPU cpu; // CRIA A ESTRUTURA DA CPU
     MEM mem = {0}; // Inicializa toda a memória com zeros(MEMORIA RAM ZERADA)
-    cpu_reset(&cpu,&mem); //BOTA A CPU EM ESTADO DE RESET
-
-
-
     
+    mem.data[0x8000] = 0xA9;
+    mem.data[0x8001] = 0x01;
+    
+    mem.data[0xFFFC] = 0x00;
+    mem.data[0xFFFD] = 0x80;
+    
+    cpu_reset(&cpu,&mem); //BOTA A CPU EM ESTADO DE RESET
+    
+    byte opcode = cpu_fetch(&cpu,&mem);
+
+    printf("Opcode buscado: 0x%02X\n", opcode);
+    printf("PC apos fetch: 0x%04X\n", cpu.PC);
 
     
 
