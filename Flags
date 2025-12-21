@@ -1,0 +1,73 @@
+🔍 Explicação de cada flag (em linguagem simples)
+🟢 Carry Flag (C)
+
+Indica vai-um ou empréstimo
+
+Usada em:
+
+soma
+
+subtração
+
+shifts
+
+comparações
+
+👉 Exemplo:
+
+255 + 1 → Carry = 1
+
+🟡 Zero Flag (Z)
+
+Ligada quando o resultado é zero
+
+👉 Exemplo:
+
+5 − 5 = 0 → Z = 1
+
+🔴 Interrupt Disable (I)
+
+Controla se a CPU aceita interrupções
+
+Quando ligada:
+
+a CPU ignora interrupções externas
+
+👉 Usada para proteger trechos críticos do código.
+
+🔵 Decimal Mode (D)
+
+Ativa aritmética BCD (Decimal Codificado em Binário)
+
+Afeta apenas ADC e SBC
+
+👉 Muito comum em sistemas financeiros antigos.
+
+🟠 Break Command (B)
+
+Ligada quando a instrução BRK é executada
+
+Indica que a interrupção foi causada por software
+
+👉 Não é um botão físico, é um sinal lógico.
+
+🟣 Overflow Flag (V)
+
+Indica erro de sinal em complemento de 2
+
+O resultado “não faz sentido” como número com sinal
+
+👉 Exemplo clássico:
+
+64 + 64 = -128   ❌
+
+
+Overflow = 1
+
+⚫ Negative Flag (N)
+
+Copia o bit mais significativo do resultado
+
+Se o bit 7 = 1 → número negativo (em complemento de 2)
+
+👉 Não testa “menor que zero”, testa o bit de sinal
