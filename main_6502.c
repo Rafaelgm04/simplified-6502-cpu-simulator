@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #define MEM_MAXIMA (1024 * 64) //64 KB
 
@@ -16,29 +17,6 @@ typedef unsigned short word; //16 bits
 
 typedef struct
 {
-    byte data[MEM_MAXIMA];
-    
-
-}MEM;
-
-void mem_write(MEM *mem, word address, byte value){
-    if (address >= MEM_MAXIMA){
-        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
-        exit(1);
-    }
-    mem->data[address] = value;
-}
-
-byte mem_read(MEM *mem, word address){
-    if (address >= MEM_MAXIMA){
-        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
-        exit(1);
-    }
-    return mem->data[address];
-}
-
-typedef struct
-{
         /* Registradores */
     //PC = program couter e um resgistrador da cpu que guarda o endereço da proxima instruçao que sera executada
     word PC;
@@ -51,22 +29,49 @@ typedef struct
     byte X;    // Registrador X
     byte Y;    // Registrador Y
 
+    uint32_t clock; // Contador de ciclos (opcional, para simulação de tempo)
+
     /* Registradore de Status (P) */
     byte P;
+    /* ================= FLAGS ================= */
+        /* para ligar a flag basta P = P | FLAG_C(a flag que deseja alterar)*/
+        /* para disligar a flag basta P = P & ~FLAG_C(a flag que deseja alterar)*/
+        
+        #define FLAG_C 0x01  // Carry
+        #define FLAG_Z 0x02  // Zero
+        #define FLAG_I 0x04  // Interrupt Disable
+        #define FLAG_D 0x08  // Decimal Mode
+        #define FLAG_B 0x10  // Break
+        #define FLAG_U 0x20  // Unused (sempre 1)
+        #define FLAG_V 0x40  // Overflow
+        #define FLAG_N 0x80  // Negative
 
 }CPU;
-/* ================= FLAGS ================= */
-    /* para ligar a flag basta P = P | FLAG_C(a flag que deseja alterar)*/
-    /* para disligar a flag basta P = P & ~FLAG_C(a flag que deseja alterar)*/
+typedef struct
+{
+    byte data[MEM_MAXIMA];
     
-    #define FLAG_C 0x01  // Carry
-    #define FLAG_Z 0x02  // Zero
-    #define FLAG_I 0x04  // Interrupt Disable
-    #define FLAG_D 0x08  // Decimal Mode
-    #define FLAG_B 0x10  // Break
-    #define FLAG_U 0x20  // Unused (sempre 1)
-    #define FLAG_V 0x40  // Overflow
-    #define FLAG_N 0x80  // Negative
+
+}MEM;
+
+void mem_write(MEM *mem, word address, byte value, CPU *cpu){
+    if (address >= MEM_MAXIMA){
+        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
+        exit(1);
+    }
+    mem->data[address] = value;
+    cpu->clock += 1; // Escrita de memória leva 1 ciclo
+}
+
+byte mem_read(MEM *mem, word address, CPU *cpu){
+    if (address >= MEM_MAXIMA){
+        printf("Erro: Acesso de memória fora dos limites: 0x%04X\n", address);
+        exit(1);
+    }
+    cpu->clock += 1; // Leitura de memória leva 1 ciclo
+    return mem->data[address];
+}
+
 
 void cpu_reset(CPU *cpu, MEM *mem){
 
@@ -84,7 +89,7 @@ void cpu_reset(CPU *cpu, MEM *mem){
     cpu->Y = 0;
     cpu->SP = 0xFD;          // valor padrão da 6502 a pilha fica na página 0x0100–0x01FF
     cpu->P  = FLAG_U;        // bit não usado sempre ligado
-
+    cpu->clock = 0;          // zera o contador de ciclos
 
 
 
@@ -93,8 +98,9 @@ void cpu_reset(CPU *cpu, MEM *mem){
 
 // Busca o próximo opcode a ser executado
 byte cpu_fetch(CPU *cpu, MEM *mem){
-    byte opcode = mem_read(mem, cpu->PC); // Lê o byte na posição do PC
+    byte opcode = mem_read(mem, cpu->PC, cpu); // Lê o byte na posição do PC
     cpu->PC++; // Incrementa o PC para apontar para a próxima instrução
+    cpu->clock += 1; // Incrementa o contador de ciclos (fetch leva 1 ciclo)
     return opcode;
 }
 
@@ -120,7 +126,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
         //antes ele passou pelo fetch e incrementou o PC para apontar para o próximo byte que é o valor imediato 
         case 0xA9: // LDA Immediate 
             {
-                byte value = mem_read(mem, cpu->PC);
+                byte value = mem_read(mem, cpu->PC, cpu);
                 cpu->A = value;
                 // Atualiza flags
                 if(cpu->A == 0){
@@ -134,6 +140,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                     cpu->P &= ~FLAG_N; // Limpa a flag Negative
                 }
                 cpu->PC++; // Incrementa o PC após ler o valor imediato
+                cpu->clock += 2; // LDA Immediate leva 2 ciclos
             }
             break;
         
@@ -143,7 +150,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
        
         case 0xA2: // LDX #imediato
             {
-                cpu->X = mem_read(mem, cpu->PC);
+                cpu->X = mem_read(mem, cpu->PC,cpu);
                 // Atualiza flags
                 if(cpu->X == 0){
                     cpu-> P |= FLAG_Z; // Seta a flag Zero
@@ -156,11 +163,12 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
                 cpu->PC++; // Incrementa o PC após ler o valor imediato
+                cpu->clock += 2; // LDX Immediate leva 2 ciclos
             }
             break;
         case 0xA0: // LDY #imediato
             {
-                cpu->Y = mem_read(mem, cpu->PC);
+                cpu->Y = mem_read(mem, cpu->PC,cpu);
                 // Atualiza flags
                 if(cpu->Y == 0){
                     cpu-> P |= FLAG_Z; // Seta a flag Zero
@@ -173,6 +181,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
                 cpu->PC++; // Incrementa o PC após ler o valor imediato
+                cpu->clock += 2; // LDY Immediate leva 2 ciclos
             }
             break;
         
@@ -192,6 +201,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // INX leva 2 ciclos
                 
             }
             break;
@@ -209,6 +219,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // INY leva 2 ciclos
             }
             break;
         case 0xCA: // DEX
@@ -225,6 +236,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // DEX leva 2 ciclos
             }
             break;
         case 0x88: // DEY
@@ -241,6 +253,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // DEY leva 2 ciclos
             }
             break;
 
@@ -259,6 +272,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // TAX leva 2 ciclos
             }
             break;
         case 0x8A: // TXA
@@ -275,6 +289,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // TXA leva 2 ciclos
             }
             break;
         case 0xA8: // TAY
@@ -291,6 +306,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // TAY leva 2 ciclos
             }
             break;
         case 0x98: // TYA
@@ -307,6 +323,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 2; // TYA leva 2 ciclos
             }
             break;
 
@@ -318,9 +335,10 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 // mem_read(mem, cpu->PC + 1) lê o byte mais significativo (MSB)
                 // O MSB é deslocado 8 bits para a esquerda e combinado com o LSB usando o operador OR
                 // O resultado é o endereço completo para onde o PC deve pular
-                byte lo = mem_read(mem, cpu->PC++);
-                byte hi = mem_read(mem, cpu->PC++);
+                byte lo = mem_read(mem, cpu->PC++,cpu);
+                byte hi = mem_read(mem, cpu->PC++,cpu);
                 cpu->PC = (hi << 8) | lo;
+                cpu->clock += 3; // JMP absoluto leva 3 ciclos
             }
             break;
 
@@ -328,33 +346,36 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
         case 0xF0: // BEQ
             {
                 if(cpu->P & FLAG_Z){
-                    byte offset = mem_read(mem, cpu->PC);
+                    byte offset = mem_read(mem, cpu->PC,cpu);
                     cpu->PC += (offset < 0x80) ? offset : offset - 0x100; // Ajusta o PC com o offset
                 }
                 cpu->PC++; // Incrementa o PC após ler o offset
+                cpu->clock += 2; // BEQ leva 2 ciclos
             }
             break;
         case 0xD0: // BNE
             {
                 if(!(cpu->P & FLAG_Z)){
-                    byte offset = mem_read(mem, cpu->PC);
+                    byte offset = mem_read(mem, cpu->PC,cpu);
                     cpu->PC += (offset < 0x80) ? offset : offset - 0x100; // Ajusta o PC com o offset
                 }
                 cpu->PC++; // Incrementa o PC após ler o offset
+                cpu->clock += 2; // BNE leva 2 ciclos
             }
             break;
 
         // Stack
         case 0x48: // PHA
             {
-                mem_write(mem, 0x0100 + cpu->SP, cpu->A);
+                mem_write(mem, 0x0100 + cpu->SP, cpu->A,cpu);
                 cpu->SP--;
+                cpu->clock += 3; // PHA leva 3 ciclos
             }
             break;
         case 0x68: // PLA
             {
                 cpu->SP++;
-                cpu->A = mem_read(mem, 0x0100 + cpu->SP);
+                cpu->A = mem_read(mem, 0x0100 + cpu->SP,cpu);
                 // Atualiza flags
                 if(cpu->A == 0){
                     cpu-> P |= FLAG_Z; // Seta a flag Zero
@@ -366,6 +387,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 } else {
                     cpu-> P &= ~FLAG_N; // Limpa a flag Negative
                 }
+                cpu->clock += 4; // PLA leva 4 ciclos
             }
             break;
 
@@ -373,18 +395,20 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
         case 0x18: // CLC
             {
                 cpu->P &= ~FLAG_C; // Limpa a flag Carry
+                cpu->clock += 2; // CLC leva 2 ciclos
             }
             break;
         case 0x38: // SEC
             {
                 cpu->P |= FLAG_C; // Seta a flag Carry
+                cpu->clock += 2; // SEC leva 2 ciclos
             }
             break;
 
         // Aritmética
         case 0x69: // ADC imediato
             {
-                byte valor = mem_read(mem, cpu->PC);
+                byte valor = mem_read(mem, cpu->PC,cpu);
                 word sum = (word)cpu->A + (word)valor + (word)(cpu->P & FLAG_C ? 1 : 0);
                 
                 // Atualiza flag Carry
@@ -416,11 +440,12 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 }
                 
                 cpu->PC++; // Incrementa o PC após ler o valor imediato
+                cpu->clock += 2; // ADC imediato leva 2 ciclos
             }
             break;
         case 0xE9: // SBC imediato
             {
-                byte valor = mem_read(mem, cpu->PC);
+                byte valor = mem_read(mem, cpu->PC,cpu);
                 word sub = (word)cpu->A - (word)valor - (word)(cpu->P & FLAG_C ? 0 : 1);
                 
                 // Atualiza flag Carry
@@ -452,6 +477,7 @@ void cpu_execute(CPU *cpu, MEM *mem, byte opcode){
                 }
                 
                 cpu->PC++; // Incrementa o PC após ler o valor imediato
+                cpu->clock += 2; // SBC imediato leva 2 ciclos
             }
             break;
 
@@ -474,6 +500,7 @@ int main(){
     mem.data[0xFFFC] = 0x00;
     mem.data[0xFFFD] = 0x80;
     */
+   // Programa de teste: Carrega 1 no acumulador, transfere para X, incrementa X, adiciona 2 ao acumulador, e termina
     mem.data[0x8000] = 0xA9;
     mem.data[0x8001] = 0x01;
     mem.data[0x8002] = 0xAA;
@@ -491,8 +518,8 @@ int main(){
     while(1){
         byte opcode = cpu_fetch(&cpu,&mem);
         cpu_execute(&cpu,&mem,opcode);
-        printf("PC: %04X  A: %02X  X: %02X  Y: %02X  P: %02X  SP: %02X\n",
-       cpu.PC, cpu.A, cpu.X, cpu.Y, cpu.P, cpu.SP);
+        printf("PC: %04X  A: %02X  X: %02X  Y: %02X  P: %02X  SP: %02X  Clock: %u\n",
+       cpu.PC, cpu.A, cpu.X, cpu.Y, cpu.P, cpu.SP, cpu.clock);
 
     
     }
